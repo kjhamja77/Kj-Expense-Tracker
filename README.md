@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # exp_track
 
 A new Flutter project.
@@ -15,3 +16,7 @@ A few resources to get you started if this is your first Flutter project:
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+=======
+# Kj-Expense-Tracker
+A personal expense tracker that automatically records card transactions from payment SMS notifications and allows manual entry of cash expenses. Easily manage daily spending, organize transactions, and monitor personal expenses in one place.
+>>>>>>> 803642348b29d44ff6a0f0da0f4e0d74034fe961
