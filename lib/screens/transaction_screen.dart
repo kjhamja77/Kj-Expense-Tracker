@@ -147,11 +147,12 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
       ) async {
     setState(() => _isLoadingMessages = true);
 
-    final all = await _historyRepo.fetchPastMessages('DIB-SMS');//widget.bank
 
     final startOfDay = DateTime(startDate.year, startDate.month, startDate.day);
     final endOfDay = DateTime(endDate.year,endDate.month,endDate.day).add(Duration(days: 1));
     //startOfDay.add(const Duration(days: 1));
+
+    final all = await _historyRepo.fetchMessagesSince('DIB-SMS',startOfDay);//widget.bank
 
     final filtered = all.where((m) {
       final d = m.date;
@@ -353,14 +354,43 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
   //   return _cleanMerchantName(rawCapture, fallback: body);
   // }
   String _extractMerchantName(String body) {
-    // 1. ATM withdrawal: the message has no merchant, so use a fixed label.
-    //    "withdraw\w*" covers withdrawn / withdrawal / withdrawl (typo-safe).
+    // 1. ATM withdrawal (unchanged)
     if (RegExp(r'\batm\b|\bwithdraw\w*', caseSensitive: false).hasMatch(body)) {
       return 'ATM Cash Withdrawal';
     }
 
-    // 2. Purchases: find every "from <something>" and keep the one that
-    //    is NOT the account/card part.
+    // 2. Online transfer with a note:
+    //    "AED 1,150.00 has been drawn from A/C No. ********* as RENT PAYMENTS. Available..."
+    //    -> the text after "as" is the note you typed, so use it as the merchant.
+    final transferNote = RegExp(
+      r"drawn\s+from[\s\S]*?\bas\s+([A-Za-z0-9 &\-\.\*\/'_@#]+?)(?=\.\s|\.$|,|$)",
+      caseSensitive: false,
+    ).firstMatch(body);
+    if (transferNote != null) {
+      final note = transferNote.group(1)!.trim();
+      if (note.isNotEmpty) {
+        return _cleanMerchantName(note, fallback: 'Online Transfer');
+      }
+    }
+    // drawn from your account but no note given
+    if (RegExp(r'\bdrawn\s+from\b', caseSensitive: false).hasMatch(body)) {
+      // fall through to the generic "from" rule below, else 'Online Transfer'
+    }
+
+    // 3. Credits with a label:
+    //    "Salary amount of AED 8,000.00 credited to your A/C no. ..."
+    //    -> label before "amount of" + "Credited"  => "Salary Credited"
+    final creditLabel = RegExp(
+      r"^\s*([A-Za-z][A-Za-z &\-\.']*?)\s+amount\s+of\b",
+      caseSensitive: false,
+    ).firstMatch(body);
+    if (creditLabel != null &&
+        RegExp(r'\bcredited\b', caseSensitive: false).hasMatch(body)) {
+      final label = creditLabel.group(1)!.trim();
+      return '${_cleanMerchantName(label, fallback: 'Amount')} Credited';
+    }
+
+    // 4. Purchases (unchanged)
     final matches = RegExp(
       r"from\s+([A-Za-z0-9 &\-\.\*\/'_@#]+?)(?=\s+on\b|\.\s|\.$|,|$)",
       caseSensitive: false,
@@ -377,9 +407,16 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
       return _cleanMerchantName(candidate, fallback: 'Unknown');
     }
 
+    // 5. Fallbacks for account messages with no label
+    if (RegExp(r'\bcredited\b', caseSensitive: false).hasMatch(body)) {
+      return 'Amount Credited';
+    }
+    if (RegExp(r'\bdrawn\s+from\b', caseSensitive: false).hasMatch(body)) {
+      return 'Online Transfer';
+    }
+
     return 'Unknown';
   }
-
   /// The word(s) immediately before "Purchase" are the actual
   /// transaction type — e.g. "POS Purchase", "Online Purchase" — so
   /// this captures whatever sits right before that word instead of
@@ -671,6 +708,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
       // scroll to, so we sync the navigation state to the range's START
       // date only — keeps the month header showing something sensible
       // without implying a single selected day.
+      print('selected date range is $startDate end data $endDate');
       setState(() {
         final bool yearChange = startDate.year != currentYear;
         currentYear = startDate.year;
